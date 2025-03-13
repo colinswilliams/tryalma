@@ -1,10 +1,11 @@
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { prisma } from '@/lib/prisma';
+import { PrismaClient } from '@prisma/client';
 import { compare } from 'bcrypt';
 
-// Add this export to fix Vercel build issues
+// Add these exports to fix Vercel build issues
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const handler = NextAuth({
   providers: [
@@ -19,30 +20,43 @@ const handler = NextAuth({
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: {
-            email: credentials.email,
-          },
-        });
+        // Create a new Prisma client instance inside the handler instead of importing
+        // This prevents connection during build time
+        const prisma = new PrismaClient();
+        
+        try {
+          const user = await prisma.user.findUnique({
+            where: {
+              email: credentials.email,
+            },
+          });
 
-        if (!user) {
+          if (!user) {
+            return null;
+          }
+
+          const isPasswordValid = await compare(credentials.password, user.password);
+
+          if (!isPasswordValid) {
+            return null;
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+          };
+        } catch (error) {
+          console.error("Authentication error:", error);
           return null;
+        } finally {
+          // Important: disconnect Prisma client
+          await prisma.$disconnect();
         }
-
-        const isPasswordValid = await compare(credentials.password, user.password);
-
-        if (!isPasswordValid) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-        };
       }
     })
   ],
+  secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: 'jwt',
   },
