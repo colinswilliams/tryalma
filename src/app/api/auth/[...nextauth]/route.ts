@@ -3,6 +3,9 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { prisma } from '@/lib/prisma';
 import { compare } from 'bcrypt';
 
+// Add this export to fix Vercel build issues
+export const dynamic = 'force-dynamic';
+
 const handler = NextAuth({
   providers: [
     CredentialsProvider({
