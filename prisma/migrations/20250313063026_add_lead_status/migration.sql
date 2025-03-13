@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Lead" ALTER COLUMN "files" SET DATA TYPE TEXT;
