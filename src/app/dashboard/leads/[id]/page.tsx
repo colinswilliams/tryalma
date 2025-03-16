@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
-import { Box, Typography, Chip, Paper, Button, Link as MuiLink } from '@mui/material';
+import { Box, Chip, Paper, Button, Link as MuiLink } from '@mui/material';
 import AdminSidebar from '@/components/AdminSidebar/AdminSidebar';
 import Providers from '@/components/Providers';
 import Link from 'next/link';
@@ -52,6 +52,39 @@ interface PageProps {
   };
 }
 
+function parseFilesData(filesStr: string | any): Array<{name: string, path: string}> {
+  if (!filesStr) return [];
+  
+  try {
+    // First, ensure it's a string
+    const str = typeof filesStr === 'string' ? filesStr : JSON.stringify(filesStr);
+    
+    // Parse the string - might be double-encoded JSON
+    let parsed;
+    try {
+      // Try to parse once
+      parsed = JSON.parse(str);
+      
+      // If it's still a string, parse again
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+    } catch {
+      // If direct parsing fails, try to extract JSON from message format
+      const match = str.match(/\[(.*)\]/);
+      if (match) {
+        parsed = JSON.parse(`[${match[1]}]`);
+      }
+    }
+    
+    // Ensure we have an array
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('Error parsing files data:', error, filesStr);
+    return [];
+  }
+}
+
 export default async function LeadDetailPage({ params }: PageProps) {
   const session = await getServerSession();
   
@@ -65,20 +98,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
     notFound();
   }
   
-  // Extract files from message if they're stored in message
-  let fileData: any[] = [];
-  if (lead.files) {
-    fileData = Array.isArray(lead.files) ? lead.files : [];
-  } else if (lead.message && lead.message.includes('Files:')) {
-    try {
-      const fileMatch = lead.message.match(/Files: (\[.*?\])/);
-      if (fileMatch) {
-        fileData = JSON.parse(fileMatch[1]);
-      }
-    } catch (e) {
-      console.error('Error parsing file data:', e);
-    }
-  }
+  let fileData = parseFilesData(lead.files);
   
   // Get selected visa categories
   const visaCategories = [];
@@ -107,9 +127,9 @@ export default async function LeadDetailPage({ params }: PageProps) {
               <Link href="/dashboard" className="text-blue-500 hover:underline mb-2 inline-block">
                 &larr; Back to Leads
               </Link>
-              <Typography variant="h4" className="font-bold">
+              <h2 className="text-3xl font-bold mb-6">
                 Lead Details: {lead.firstName} {lead.lastName}
-              </Typography>
+              </h2>
             </Box>
             <Chip 
               label={lead.status === 'REACHED_OUT' ? 'Reached Out' : 'Pending'} 
@@ -120,56 +140,56 @@ export default async function LeadDetailPage({ params }: PageProps) {
           <Box className="flex gap-4">
             <Box className="w-[80%]">
               <Paper className="p-6 mb-6">
-                <Typography variant="h6" className="font-medium mb-4">Contact Information</Typography>
+                <h6 className="font-medium mb-4">Contact Information</h6>
                 <Box className="flex gap-4 flex-wrap">
                   <Box className="w-[50%]">
-                    <Typography variant="body2" color="text.secondary">Name</Typography>
-                    <Typography variant="body1" className="font-medium">
+                    <p className="text-sm font-medium text-gray-500">Name</p>
+                    <p className="font-medium">
                       {lead.firstName} {lead.lastName}
-                    </Typography>
+                    </p>
                   </Box>
                   <Box className="w-[50%]">
-                    <Typography variant="body2" color="text.secondary">Email</Typography>
-                    <Typography variant="body1">
+                    <p className="text-sm font-medium text-gray-500">Email</p>
+                    <p>
                       <MuiLink href={`mailto:${lead.email}`} className="text-blue-600 hover:underline">
                         {lead.email}
                       </MuiLink>
-                    </Typography>
+                    </p>
                   </Box>
                   <Box className="w-[50%]">
-                    <Typography variant="body2" color="text.secondary">Country</Typography>
-                    <Typography variant="body1">{lead.country || 'Not specified'}</Typography>
+                    <p className="text-sm font-medium text-gray-500">Country</p>
+                    <p>{lead.country || 'Not specified'}</p>
                   </Box>
                   <Box className="w-[50%]">
-                    <Typography variant="body2" color="text.secondary">Website</Typography>
+                    <p className="text-sm font-medium text-gray-500">Website</p>
                     {lead.website ? (
-                      <Typography variant="body1">
+                      <p>
                         <MuiLink href={lead.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                           {lead.website.replace(/^https?:\/\//, '')}
                         </MuiLink>
-                      </Typography>
+                      </p>
                     ) : (
-                      <Typography variant="body1">Not specified</Typography>
+                      <p>Not specified</p>
                     )}
                   </Box>
                   <Box className="w-[50%]">
-                    <Typography variant="body2" color="text.secondary">Submitted On</Typography>
-                    <Typography variant="body1">{formattedDate}</Typography>
+                    <p className="text-sm font-medium text-gray-500">Submitted On</p>
+                    <p>{formattedDate}</p>
                   </Box>
                 </Box>
               </Paper>
 
               <Paper className="p-6 mb-6">
-                <Typography variant="h6" className="font-medium mb-4">Message</Typography>
-                <Typography variant="body1" style={{ whiteSpace: 'pre-wrap' }}>
-                  {lead.message?.replace(/Files: \[.*?\]/, '') || 'No message provided'}
-                </Typography>
+                <h6 className="text-sm font-medium text-gray-500">Message</h6>
+                <p style={{ whiteSpace: 'pre-wrap' }}>
+                  {lead.message || 'No message provided'}
+                </p>
               </Paper>
             </Box>
 
             <Box className="w-[20%]">
               <Paper className="p-6 mb-6">
-                <Typography variant="h6" className="font-medium mb-4">Visa Categories</Typography>
+                <h6 className="font-medium mb-4">Visa Categories</h6>
                 {visaCategories.length > 0 ? (
                   <Box className="flex flex-wrap gap-2">
                     {visaCategories.map((category) => (
@@ -177,13 +197,13 @@ export default async function LeadDetailPage({ params }: PageProps) {
                     ))}
                   </Box>
                 ) : (
-                  <Typography variant="body2">No visa categories selected</Typography>
+                  <p>No visa categories selected</p>
                 )}
               </Paper>
 
               {fileData.length > 0 && (
                 <Paper className="p-6 mb-6">
-                  <Typography variant="h6" className="font-medium mb-4">Files</Typography>
+                  <h6 className="font-medium mb-4">Files</h6>
                   <Box className="space-y-2">
                     {fileData.map((file, index) => (
                       <Box key={index} className="flex items-center">
@@ -203,20 +223,22 @@ export default async function LeadDetailPage({ params }: PageProps) {
               )}
 
               <Paper className="p-6">
-                <Typography variant="h6" className="font-medium mb-4">Actions</Typography>
-                <Button 
-                  variant="contained" 
-                  color="primary" 
-                  fullWidth 
-                  className="mb-2 normal-case"
-                  href={`mailto:${lead.email}`}
-                >
-                  Email Lead
-                </Button>
-                <StatusUpdateButton 
-                  leadId={lead.id} 
-                  currentStatus={lead.status}
-                />
+                <h6 className="font-medium mb-4">Actions</h6>
+								<Box className="flex gap-1 flex-col">
+									<Button 
+										variant="contained" 
+										color="primary" 
+										fullWidth 
+										className="mb-2 normal-case"
+										href={`mailto:${lead.email}`}
+									>
+										Email Lead
+									</Button>
+									<StatusUpdateButton 
+										leadId={lead.id} 
+										currentStatus={lead.status}
+									/>
+								</Box>
               </Paper>
             </Box>
           </Box>

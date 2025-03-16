@@ -13,7 +13,8 @@ import {
   createColumnHelper,
   SortingState
 } from '@tanstack/react-table';
-import { Box } from '@mui/material';
+import { Box, Popover, Checkbox, FormControlLabel, FormGroup } from '@mui/material';
+import { KeyboardArrowDown, ArrowUpward, ArrowDownward, Search as SearchIcon } from '@mui/icons-material';
 
 interface Lead {
   id: string;
@@ -40,40 +41,28 @@ export default function LeadList() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [updatingLeadId, setUpdatingLeadId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+    
+  // Add state for status filter
+  const [statusFilter, setStatusFilter] = useState<{
+    PENDING: boolean;
+    REACHED_OUT: boolean;
+  }>({
+    PENDING: true,
+    REACHED_OUT: true
+  });
   
-  const updateLeadStatus = async (leadId: string, newStatus: 'PENDING' | 'REACHED_OUT') => {
-    setUpdatingLeadId(leadId);
-    try {
-			// not the best, this optimistically updates the status, but ideally this should refetch the page
-			setLeads(prevLeads => 
-				prevLeads.map(lead => 
-					lead.id === leadId ? { ...lead, status: newStatus } : lead
-				)
-			);
-			
-      const response = await fetch(`/api/leads/${leadId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to update status');
-      }
-
-    } catch (err) {
-      // Revert change on error
-      setLeads(prevLeads => 
-        prevLeads.map(lead => 
-          lead.id === leadId ? { ...lead, status: lead.status === 'PENDING' ? 'REACHED_OUT' : 'PENDING' } : lead
-        )
-      );
-      console.error('Error updating status:', err);
-      alert('Failed to update status. Please try again.');
-    } finally {
-      setUpdatingLeadId(null);
-    }
+  // Popover state
+  const [statusAnchorEl, setStatusAnchorEl] = useState<HTMLButtonElement | null>(null);
+  const isStatusPopoverOpen = Boolean(statusAnchorEl);
+  
+  // Open/close handlers for popover
+  const handleStatusClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setStatusAnchorEl(event.currentTarget);
+  };
+  
+  const handleStatusClose = () => {
+    setStatusAnchorEl(null);
   };
   
   const columns = useMemo(() => [
@@ -99,9 +88,7 @@ export default function LeadList() {
     columnHelper.accessor('status', {
       header: 'Status',
       cell: info => {
-        const leadId = info.row.original.id;
         const currentStatus = info.getValue() || 'PENDING';
-        const isUpdating = updatingLeadId === leadId;
         
         return (
           <Box className="flex items-center">
@@ -116,35 +103,8 @@ export default function LeadList() {
         );
       }
     }),
-    columnHelper.accessor('email', {
-      header: 'Email',
-      cell: info => (
-        <a href={`mailto:${info.getValue()}`} className="text-blue-600 hover:underline">
-          {info.getValue()}
-        </a>
-      ),
-    }),
     columnHelper.accessor('country', {
       header: 'Country',
-    }),
-    columnHelper.accessor('website', {
-      header: 'Website',
-      cell: info => {
-        const website = info.getValue();
-        return website ? (
-          <a href={website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-            {website.replace(/^https?:\/\//, '')}
-          </a>
-        ) : '-';
-      },
-    }),
-    columnHelper.accessor('message', {
-      header: 'Message',
-      cell: info => (
-        <Box className="max-w-xs truncate" title={info.getValue()}>
-          {info.getValue()}
-        </Box>
-      ),
     }),
     columnHelper.accessor(row => {
       const categories = [];
@@ -156,40 +116,6 @@ export default function LeadList() {
     }, {
       id: 'visaCategories',
       header: 'Visa Categories',
-    }),
-    columnHelper.accessor('files', {
-      header: 'Files',
-      cell: info => {
-        const files = info.getValue();
-        if (!files || files.length === 0) return '-';
-        
-        // Extract files from message if they're stored as string
-        const fileData = typeof files === 'string' ? 
-          (() => {
-            try {
-              const fileMatch = files.match(/Files: (\[.*?\])/);
-              return fileMatch ? JSON.parse(fileMatch[1]) : [];
-            } catch (e) {
-              return [];
-            }
-          })() : files;
-          
-        return Array.isArray(fileData) ? (
-          <Box className="space-y-1">
-            {fileData.map((file: any, index: number) => (
-              <a 
-                key={index}
-                href={file.path}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-sm text-blue-600 hover:underline"
-              >
-                {file.name || `File ${index + 1}`}
-              </a>
-            ))}
-          </Box>
-        ) : '-';
-      }
     }),
     columnHelper.display({
       id: 'actions',
@@ -205,7 +131,40 @@ export default function LeadList() {
         </Box>
       ),
     }),
-  ], [updatingLeadId]);
+  ], []);
+  
+  // Update the filter logic to include status filter
+  const filteredData = useMemo(() => {
+    let filtered = leads;
+    
+    // Apply status filter
+    filtered = filtered.filter((lead) => {
+      const status = lead.status || 'PENDING';
+      return statusFilter[status];
+    });
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(lead => {
+        const searchableValues = [
+          lead.firstName,
+          lead.lastName,
+          lead.email,
+          lead.country,
+          lead.message,
+          lead.visaCategoryO1 ? 'O-1' : '',
+          lead.visaCategoryEB1A ? 'EB-1A' : '',
+          lead.visaCategoryEB2NIW ? 'EB-2 NIW' : '',
+          lead.visaCategoryUnknown ? 'Unknown' : '',
+          lead.status || 'PENDING'
+        ].join(' ').toLowerCase();
+        
+        return searchableValues.includes(searchQuery.toLowerCase());
+      });
+    }
+    
+    return filtered;
+  }, [leads, searchQuery, statusFilter]);
   
   useEffect(() => {
     if (session.status === 'unauthenticated') {
@@ -240,7 +199,7 @@ export default function LeadList() {
   }, [session.status]);
   
   const table = useReactTable({
-    data: leads,
+    data: filteredData,
     columns,
     state: {
       sorting,
@@ -250,6 +209,11 @@ export default function LeadList() {
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
+  
+  // Reset pagination when filters change
+  useEffect(() => {
+    table?.setPageIndex(0);
+  }, [searchQuery, statusFilter, table]);
   
   if (loading) {
     return (
@@ -278,8 +242,71 @@ export default function LeadList() {
   
   return (
     <Box className="w-full px-4 py-4 container">
+      <Box className="mb-4 gap-4 flex">
+				<Box className="relative">
+					<SearchIcon className="user-select-none pointer-events-none absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" fontSize="small" />
+					<input
+						type="text"
+						placeholder="Search"
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+						className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-[20rem] focus:outline-none focus:ring-2 focus:ring-blue-500"
+					/>
+				</Box>
+				<button 
+					className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 normal-case text-sm flex items-center gap-2"
+					onClick={handleStatusClick}
+				>
+					Status <KeyboardArrowDown fontSize="small" className="flex items-center" />
+				</button>
+				
+				{/* Status Filter Popover */}
+				<Popover
+					open={isStatusPopoverOpen}
+					anchorEl={statusAnchorEl}
+					onClose={handleStatusClose}
+					anchorOrigin={{
+						vertical: 'bottom',
+						horizontal: 'left',
+					}}
+					transformOrigin={{
+						vertical: 'top',
+						horizontal: 'left',
+					}}
+				>
+					<Box className="p-4">
+						<FormGroup>
+							<FormControlLabel
+								control={
+									<Checkbox
+										checked={statusFilter.PENDING}
+										onChange={(e) => setStatusFilter({
+											...statusFilter,
+											PENDING: e.target.checked
+										})}
+									/>
+								}
+								label="Pending"
+							/>
+							<FormControlLabel
+								control={
+									<Checkbox
+										checked={statusFilter.REACHED_OUT}
+										onChange={(e) => setStatusFilter({
+											...statusFilter,
+											REACHED_OUT: e.target.checked
+										})}
+									/>
+								}
+								label="Reached Out"
+							/>
+						</FormGroup>
+					</Box>
+				</Popover>
+      </Box>
+      
       <Box className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-300">
+        <table className="min-w-full divide-y divide-gray-300 rounded-md overflow-hidden">
           <thead className="bg-gray-50">
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id}>
@@ -287,15 +314,15 @@ export default function LeadList() {
                   <th 
                     key={header.id}
                     scope="col"
-                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 cursor-pointer"
                     onClick={header.column.getToggleSortingHandler()}
                   >
-                    <Box className="flex items-center">
+                    <Box className="flex items-center gap-2">
                       {flexRender(header.column.columnDef.header, header.getContext())}
                       <span>
                         {{
-                          asc: ' 🔼',
-                          desc: ' 🔽',
+                          asc: <ArrowUpward fontSize="small" className="flex items-center" />,
+                          desc: <ArrowDownward fontSize="small" className="flex items-center" />,
                         }[header.column.getIsSorted() as string] ?? null}
                       </span>
                     </Box>
@@ -346,10 +373,10 @@ export default function LeadList() {
               <span className="font-medium">{table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}</span>
               {' '}to{' '}
               <span className="font-medium">
-                {Math.min((table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize, leads.length)}
+                {Math.min((table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize, filteredData.length)}
               </span>
               {' '}of{' '}
-              <span className="font-medium">{leads.length}</span> results
+              <span className="font-medium">{filteredData.length}</span> results
             </p>
           </Box>
           <Box>
